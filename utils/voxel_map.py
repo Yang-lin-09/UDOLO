@@ -61,6 +61,7 @@ class Map(object):
                 new_first_id = 1
             else:
                 new_first_id = all_ids.max() + 1
+            ids = ids.long()
             ids[new_ids_ind] = torch.arange(len(new_ids_ind)).cuda() + new_first_id
 
         # --------------update scores semantics------------------------

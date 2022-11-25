@@ -16,10 +16,16 @@ import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import time
+import matplotlib.pyplot as plt
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
 sys.path.append(os.path.join(ROOT_DIR, 'models'))
+sys.path.append(os.path.join(ROOT_DIR, 'utils'))
+
+from bounding_box_3d import Box3DList
+from kalman_utils import AB3DMOT
 from ap_helper import APCalculator, parse_predictions, parse_groundtruths
 
 parser = argparse.ArgumentParser()
@@ -168,9 +174,13 @@ def evaluate_one_epoch():
         batch_pred_map_cls = parse_predictions(end_points, CONFIG_DICT,
                                                                            batch_data_label,
                                                                            batch_idx)
+        
 
         batch_gt_map_cls = parse_groundtruths(end_points, CONFIG_DICT)
 
+        print('-' * 50)
+        print(batch_data_label['point_clouds_camera'].shape)
+        
         for ap_calculator in ap_calculator_list:
             ap_calculator.step(batch_pred_map_cls, batch_gt_map_cls)
 

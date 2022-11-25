@@ -375,7 +375,7 @@ class Box3DList(object):
 
 
 if __name__ == "__main__":
-    # euler = (-0.06113487224401537, -0.010398221352184765, 0.35926017719345693)
+    euler = (-0.06113487224401537, -0.010398221352184765, 0.35926017719345693)
     bbox_3d = torch.tensor([[-39.5482, 1.0015, 72.5878],
                             [-39.5280, -0.9614, 72.4898],
                             [-44.6086, -1.0026, 72.2687],
@@ -389,9 +389,10 @@ if __name__ == "__main__":
 
     box_3d_list = Box3DList(bbox_3d)
     box_3d_list = box_3d_list.convert("ry_lhwxyz")
-    # print("-----------convert to ry_lhwxyz-----------")
-    # print("after convert: {}, annotation: {}".format(box_3d_list.bbox_3d[0, 0], euler[2]))
-    # print("dif: {}".format(torch.norm(box_3d_list.bbox_3d[0, 0] - euler[2])))
+    print("-----------convert to ry_lhwxyz-----------")
+    print("after convert: {}".format(box_3d_list.bbox_3d))
+    print("after convert: {}, annotation: {}".format(box_3d_list.bbox_3d[0, 0], euler[2]))
+    print("dif: {}".format(torch.norm(box_3d_list.bbox_3d[0, 0] - euler[2])))
 
     box_3d_list = box_3d_list.convert("corners")
     print("-----------convert to corners-----------")

@@ -106,9 +106,16 @@ def box3d_iou(corners1, corners2):
         iou: 3D bounding box IoU
         iou_2d: bird's eye view 2D bounding box IoU
 
-    todo (rqi): add more description on corner points' orders.
+        qs: (8,3) array of vertices for the 3d box in following order (ry = 0):
+            7 -------- 4                 z
+           /|         /|                /
+          6 -------- 5 .               /
+          | |        | |              |--------> x
+          . 3 -------- 0              |
+          |/         |/               |
+          2 -------- 1                y  
     '''
-    # corner points are in counter clockwise order
+    # corner points are in counter clockwise order #### note: in positive y, bird's eye view
     rect1 = [(corners1[i, 0], corners1[i, 2]) for i in range(3, -1, -1)]
     rect2 = [(corners2[i, 0], corners2[i, 2]) for i in range(3, -1, -1)]
     area1 = poly_area(np.array(rect1)[:, 0], np.array(rect1)[:, 1])
@@ -221,6 +228,14 @@ def get_3d_box(box_size, heading_angle, center):
     ''' box_size is array(l,w,h), heading_angle is radius clockwise from pos x axis, center is xyz of box center
         output (8,3) array for 3D box cornders
         Similar to utils/compute_orientation_3d
+        qs: (8,3) array of vertices for the 3d box in following order (ry = 0):
+            7 -------- 4                 z
+           /|         /|                /
+          6 -------- 5 .               /
+          | |        | |              |--------> x
+          . 3 -------- 0              |
+          |/         |/               |
+          2 -------- 1                y
     '''
     R = roty(heading_angle)
     l, w, h = box_size
