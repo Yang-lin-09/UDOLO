@@ -184,7 +184,8 @@ def evaluate_one_epoch():
         
         # only for batch size = 1
         dets = {}
-        dets['dets'] = [np.concatenate(corners2xyzrylwh(batch_pred_map_cls[0][i][1], batch_pred_map_cls[0][i][2])) for i in range(len(batch_pred_map_cls[0]))]
+        dets['dets'] = np.array([np.concatenate(corners2xyzrylwh(batch_pred_map_cls[0][i][1])) for i in range(len(batch_pred_map_cls[0]))])
+        print(dets)
         print(tracker.update(dets))
         
         

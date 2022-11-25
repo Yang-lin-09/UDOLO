@@ -220,6 +220,7 @@ class KalmanBoxTracker(object):
         self.first_continuing_hit = 1
         self.still_first = True
         self.age = 0
+        self.bbox_curr = bbox3D.copy()
         # self.info = info  # other info
 
     def update(self, bbox3D):
@@ -263,6 +264,7 @@ class KalmanBoxTracker(object):
         if self.kf.x[3] >= np.pi: self.kf.x[3] -= np.pi * 2  # make the theta still in the range
         if self.kf.x[3] < -np.pi: self.kf.x[3] += np.pi * 2
         # self.info = info
+        self.bbox_curr = bbox3D.copy()
 
     def predict(self):
         """
@@ -284,7 +286,8 @@ class KalmanBoxTracker(object):
         """
         Returns the current bounding box estimate.
         """
-        return self.kf.x[:7].reshape((7,))
+        return self.bbox_curr
+        # return self.kf.x[:7].reshape((7,))
 
 
 def associate_detections_to_trackers(detections, trackers, iou_threshold=0.5):
@@ -305,9 +308,10 @@ def associate_detections_to_trackers(detections, trackers, iou_threshold=0.5):
     for d, det in enumerate(detections):
         for t, trk in enumerate(trackers):
             iou_matrix[d, t] = iou3d(det, trk)[0]  # det: 8 x 3, trk: 8 x 3
-    matched_indices = linear_assignment(-iou_matrix)  # hougarian algorithm
-
+    row_ind, col_ind = linear_assignment(-iou_matrix)  # hougarian algorithm
+    matched_indices = np.stack((row_ind, col_ind), axis=1)
     unmatched_detections = []
+
     for d, det in enumerate(detections):
         if (d not in matched_indices[:, 0]):
             unmatched_detections.append(d)
@@ -333,8 +337,8 @@ def associate_detections_to_trackers(detections, trackers, iou_threshold=0.5):
 
 
 class AB3DMOT(object):
-    def __init__(self, max_age=100,
-                 min_hits=0):  # max age will preserve the bbox does not appear no more than 2 frames, interpolate the detection
+    def __init__(self, max_age=1,
+                 min_hits=1):  # max age will preserve the bbox does not appear no more than 2 frames, interpolate the detection
         # def __init__(self,max_age=3,min_hits=3):        # ablation study
         # def __init__(self,max_age=1,min_hits=3):
         # def __init__(self,max_age=2,min_hits=1):
@@ -361,7 +365,7 @@ class AB3DMOT(object):
         self.trks = np.ma.compress_rows(np.ma.masked_invalid(trks))
         for t in reversed(to_del):
             self.trackers.pop(t)
-        return self.trks[:, self.reorder_back]
+        return self.trks[:,:]
 
     def update(self, dets_all):
         """
@@ -376,7 +380,6 @@ class AB3DMOT(object):
         """
         dets = dets_all['dets']  # dets: N x 7, float numpy array
         # dets = dets[:, self.reorder]
-        print(len(dets))
         self.frame_count += 1
 
         # trks = np.zeros((len(self.trackers), 7))  # N x 7 , #get predicted locations from existing trackers.
@@ -396,10 +399,11 @@ class AB3DMOT(object):
             dets_8corner = np.stack(dets_8corner, axis=0)
         else:
             dets_8corner = []
+        self.predict()
         trks_8corner = [convert_3dbox_to_8corner(trk_tmp) for trk_tmp in self.trks]
         if len(trks_8corner) > 0: trks_8corner = np.stack(trks_8corner, axis=0)
         matched, unmatched_dets, unmatched_trks = associate_detections_to_trackers(dets_8corner, trks_8corner)
-
+        
         # update matched trackers with assigned detections
         for t, trk in enumerate(self.trackers):
             if t not in unmatched_trks:
@@ -409,7 +413,6 @@ class AB3DMOT(object):
                 except:
                     a = 1
 
-        print(unmatched_dets)
         # create and initialise new trackers for unmatched detections
         for i in unmatched_dets:  # a scalar of index
             trk = KalmanBoxTracker(dets[i, :])

@@ -252,7 +252,7 @@ def get_3d_box(box_size, heading_angle, center):
     corners_3d = np.transpose(corners_3d)
     return corners_3d
 
-def corners2xyzrylwh(corners, score):
+def corners2xyzrylwh(corners):
     '''
     Input:
         corners:
@@ -268,7 +268,6 @@ def corners2xyzrylwh(corners, score):
           |/         |/               |
           2 -------- 1                y
     '''
-    print(score)
     xyz = np.sum(corners, axis = 0) / 8
     lwh = np.array([np.linalg.norm(corners[3] - corners[0]), 
                     np.linalg.norm(corners[1] - corners[0]),
