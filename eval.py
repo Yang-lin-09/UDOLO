@@ -24,7 +24,7 @@ ROOT_DIR = BASE_DIR
 sys.path.append(os.path.join(ROOT_DIR, 'models'))
 sys.path.append(os.path.join(ROOT_DIR, 'utils'))
 
-from bounding_box_3d import Box3DList
+from box_util import get_3d_box, corners2xyzrylwh
 from kalman_utils import AB3DMOT
 from ap_helper import APCalculator, parse_predictions, parse_groundtruths
 
@@ -161,6 +161,8 @@ def evaluate_one_epoch():
                           for iou_thresh in AP_IOU_THRESHOLDS]
 
     net.eval()  # set model to eval mode (for bn and dp)
+    tracker = AB3DMOT()
+    
     for batch_idx, batch_data_label in enumerate(tqdm(TEST_DATALOADER)):
         # Forward pass
         loss, end_points = net(batch_data_label, DATASET_CONFIG)
@@ -178,8 +180,14 @@ def evaluate_one_epoch():
 
         batch_gt_map_cls = parse_groundtruths(end_points, CONFIG_DICT)
 
-        print('-' * 50)
-        print(batch_data_label['point_clouds_camera'].shape)
+        point = batch_data_label['point_clouds_camera'].cpu().numpy()[0]
+        
+        # only for batch size = 1
+        dets = {}
+        dets['dets'] = [np.concatenate(corners2xyzrylwh(batch_pred_map_cls[0][i][1], batch_pred_map_cls[0][i][2])) for i in range(len(batch_pred_map_cls[0]))]
+        print(tracker.update(dets))
+        
+        
         
         for ap_calculator in ap_calculator_list:
             ap_calculator.step(batch_pred_map_cls, batch_gt_map_cls)

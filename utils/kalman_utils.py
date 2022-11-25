@@ -149,14 +149,13 @@ def convert_3dbox_to_8corner(bbox3d_input):
 
     return np.transpose(corners_3d)
 
-
 class KalmanBoxTracker(object):
     """
     This class represents the internel state of individual tracked objects observed as bbox.
     """
     count = 0
 
-    def __init__(self, bbox3D, info):
+    def __init__(self, bbox3D):
         """
         Initialises a tracker using initial bounding box.
         """
@@ -221,9 +220,9 @@ class KalmanBoxTracker(object):
         self.first_continuing_hit = 1
         self.still_first = True
         self.age = 0
-        self.info = info  # other info
+        # self.info = info  # other info
 
-    def update(self, bbox3D, info):
+    def update(self, bbox3D):
         """
         Updates the state vector with observed bbox.
         """
@@ -263,7 +262,7 @@ class KalmanBoxTracker(object):
 
         if self.kf.x[3] >= np.pi: self.kf.x[3] -= np.pi * 2  # make the theta still in the range
         if self.kf.x[3] < -np.pi: self.kf.x[3] += np.pi * 2
-        self.info = info
+        # self.info = info
 
     def predict(self):
         """
@@ -375,8 +374,9 @@ class AB3DMOT(object):
 
         NOTE: The number of objects returned may differ from the number of detections provided.
         """
-        dets, info = dets_all['dets'], dets_all['info']  # dets: N x 7, float numpy array
-        dets = dets[:, self.reorder]
+        dets = dets_all['dets']  # dets: N x 7, float numpy array
+        # dets = dets[:, self.reorder]
+        print(len(dets))
         self.frame_count += 1
 
         # trks = np.zeros((len(self.trackers), 7))  # N x 7 , #get predicted locations from existing trackers.
@@ -405,29 +405,30 @@ class AB3DMOT(object):
             if t not in unmatched_trks:
                 d = matched[np.where(matched[:, 1] == t)[0], 0]  # a list of index
                 try:
-                    trk.update(dets[d, :][0], info[d, :][0])
+                    trk.update(dets[d, :][0])
                 except:
                     a = 1
 
+        print(unmatched_dets)
         # create and initialise new trackers for unmatched detections
         for i in unmatched_dets:  # a scalar of index
-            trk = KalmanBoxTracker(dets[i, :], info[i, :])
+            trk = KalmanBoxTracker(dets[i, :])
             self.trackers.append(trk)
         i = len(self.trackers)
         for trk in reversed(self.trackers):
             d = trk.get_state()  # bbox location
-            d = d[self.reorder_back]
+            # d = d[self.reorder_back]
 
             if ((trk.time_since_update < self.max_age) and (
                     trk.hits >= self.min_hits or self.frame_count <= self.min_hits)):
                 ret.append(
-                    np.concatenate((d, [trk.id + 1], trk.info)).reshape(1, -1))  # +1 as MOT benchmark requires positive
+                    np.concatenate((d, [trk.id + 1])).reshape(1, -1))  # +1 as MOT benchmark requires positive
             i -= 1
             # remove dead tracklet
             if (trk.time_since_update >= self.max_age):
                 self.trackers.pop(i)
         if (len(ret) > 0):
-            return np.concatenate(ret)  # x, y, z, theta, l, w, h, ID, other info, confidence
+            return np.concatenate(ret)  # x, y, z, theta, l, w, h, ID
         return np.empty((0, 15))
 
 

@@ -226,28 +226,28 @@ def parse_predictions(end_points, config_dict, inputs, frame):
             cur_list = []
             for ii in range(config_dict['dataset_config'].num_class):
                 if config_dict['feedback']:
+                    # print(1, sem_cls_probs[i, j, ii], obj_prob[i, j], config_dict['conf_thresh'], obj_prob[i, j] > config_dict['conf_thresh'], pred_mask[i, j] == 1, pred_mask[i, j] == 1 and obj_prob[i, j] > config_dict['conf_thresh'])
                     cur_list += [
                         (ii, pred_corners_3d_upright_camera[i, j], sem_cls_probs[i, j, ii] * obj_prob[i, j], ids[i, j]) \
-                        for j in range(K) if
-                        pred_mask[i, j] == 1 and obj_prob[i, j] > config_dict['conf_thresh']]
+                        for j in range(K) if pred_mask[i, j] == 1 and sem_cls_probs[i, j, ii] * obj_prob[i, j] > config_dict['conf_thresh']]
                 else:
+                    # print(2, sem_cls_probs[i, j, ii], obj_prob[i, j], config_dict['conf_thresh'], obj_prob[i, j] > config_dict['conf_thresh'], pred_mask[i, j] == 1, pred_mask[i, j] == 1 and obj_prob[i, j] > config_dict['conf_thresh'])
                     cur_list += [(ii, pred_corners_3d_upright_camera[i, j], sem_cls_probs[i, j, ii] * obj_prob[i, j], 0) \
-                                 for j in range(K) if
-                                 pred_mask[i, j] == 1 and obj_prob[i, j] > config_dict['conf_thresh']]
+                                 for j in range(K) if pred_mask[i, j] == 1 and sem_cls_probs[i, j, ii] * obj_prob[i, j] > config_dict['conf_thresh']]
             batch_pred_map_cls.append(cur_list)
         else:
             if config_dict['feedback']:
+                # print(3, obj_prob[i, j], config_dict['conf_thresh'], obj_prob[i, j] > config_dict['conf_thresh'], pred_mask[i, j] == 1, pred_mask[i, j] == 1 and obj_prob[i, j] > config_dict['conf_thresh'])
                 batch_pred_map_cls.append(
                     [(pred_sem_cls[i, j].item(), pred_corners_3d_upright_camera[i, j], obj_prob[i, j], ids[i, j]) \
-                     for j in range(K) if
-                     pred_mask[i, j] == 1 and obj_prob[i, j] > config_dict['conf_thresh']])
+                     for j in range(K) if pred_mask[i, j] == 1 and obj_prob[i, j] > config_dict['conf_thresh']])
             else:
+                # print(4, obj_prob[i, j], config_dict['conf_thresh'], obj_prob[i, j] > config_dict['conf_thresh'], pred_mask[i, j] == 1, pred_mask[i, j] == 1 and obj_prob[i, j] > config_dict['conf_thresh'])
                 batch_pred_map_cls.append(
                     [(pred_sem_cls[i, j].item(), pred_corners_3d_upright_camera[i, j], obj_prob[i, j], 0, scene_name[i]) \
-                     for j in range(K) if
-                     pred_mask[i, j] == 1 and obj_prob[i, j] > config_dict['conf_thresh']])
+                     for j in range(K) if pred_mask[i, j] == 1 and obj_prob[i, j] > config_dict['conf_thresh']])
     end_points['batch_pred_map_cls'] = batch_pred_map_cls
-
+    
     if config_dict['feedback']:
         # TODO support only one class and per_class_proposal
         if len(batch_pred_map_cls[0]) == 0:

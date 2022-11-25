@@ -228,6 +228,7 @@ def get_3d_box(box_size, heading_angle, center):
     ''' box_size is array(l,w,h), heading_angle is radius clockwise from pos x axis, center is xyz of box center
         output (8,3) array for 3D box cornders
         Similar to utils/compute_orientation_3d
+        ry counter clockwise from from down to up
         qs: (8,3) array of vertices for the 3d box in following order (ry = 0):
             7 -------- 4                 z
            /|         /|                /
@@ -250,6 +251,33 @@ def get_3d_box(box_size, heading_angle, center):
     corners_3d[2, :] = corners_3d[2, :] + center[2];
     corners_3d = np.transpose(corners_3d)
     return corners_3d
+
+def corners2xyzrylwh(corners, score):
+    '''
+    Input:
+        corners:
+            8 x 3
+    Output:
+        xyz, ry, lwh
+    Graph:
+            7 -------- 4                 z
+           /|         /|                /
+          6 -------- 5 .               /
+          | |        | |              |--------> x
+          . 3 -------- 0              |
+          |/         |/               |
+          2 -------- 1                y
+    '''
+    print(score)
+    xyz = np.sum(corners, axis = 0) / 8
+    lwh = np.array([np.linalg.norm(corners[3] - corners[0]), 
+                    np.linalg.norm(corners[1] - corners[0]),
+                    np.linalg.norm(corners[4] - corners[0])])
+    diff = (corners[7] - corners[6] + corners[4] - corners[5] + \
+        corners[0] - corners[1] + corners[3] - corners[2]) / 4
+    ry = np.array([np.arctan2(diff[0], diff[2]), ])
+
+    return xyz, ry, lwh
 
 
 if __name__ == '__main__':
