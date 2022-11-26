@@ -18,6 +18,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import time
 import matplotlib.pyplot as plt
+import open3d as o3d
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
@@ -33,7 +34,7 @@ parser.add_argument('--model', default='votenet', help='Model file name [default
 parser.add_argument('--dataset', default='sunrgbd', help='Dataset name. sunrgbd or scannet. [default: sunrgbd]')
 parser.add_argument('--checkpoint_path', default=None, help='Model checkpoint path [default: None]')
 parser.add_argument('--dump_dir', default=None, help='Dump dir to save sample outputs [default: None]')
-parser.add_argument('--num_point', type=int, default=20000, help='Point Number [default: 20000]')
+parser.add_argument('--num_point', type=int, default=50000, help='Point Number [default: 20000]')
 parser.add_argument('--num_target', type=int, default=32, help='Point Number [default: 256]')
 parser.add_argument('--batch_size', type=int, default=8, help='Batch Size during training [default: 8]')
 parser.add_argument('--vote_factor', type=int, default=1, help='Number of votes generated from each seed [default: 1]')
@@ -48,7 +49,7 @@ parser.add_argument('--use_cls_nms', action='store_true', help='Use per class NM
 parser.add_argument('--use_old_type_nms', action='store_true', help='Use old type of NMS, IoBox2Area.')
 parser.add_argument('--per_class_proposal', action='store_true', help='Duplicate each proposal num_class times.')
 parser.add_argument('--nms_iou', type=float, default=0.25, help='NMS IoU threshold. [default: 0.25]')
-parser.add_argument('--conf_thresh', type=float, default=0.73,
+parser.add_argument('--conf_thresh', type=float, default=0.8,
                     help='Filter out predictions with obj prob less than it. [default: 0.05]')
 parser.add_argument('--faster_eval', action='store_true',
                     help='Faster evaluation by skippling empty bounding box removal.')
@@ -163,6 +164,22 @@ def evaluate_one_epoch():
     net.eval()  # set model to eval mode (for bn and dp)
     tracker = AB3DMOT()
     
+    vis = o3d.visualization.Visualizer()
+    pcd = o3d.geometry.PointCloud()
+    vis.create_window()
+    
+    vis_ctrl = vis.get_view_control()
+
+    
+    initialized = False
+    
+    lines = [[0, 1], [1, 2], [2, 3], [0, 3],
+         [4, 5], [5, 6], [6, 7], [4, 7],
+         [0, 4], [1, 5], [2, 6], [3, 7]]
+
+    # Use the same color for all lines
+    colors = [[1, 0, 0] for _ in range(len(lines))]
+    
     for batch_idx, batch_data_label in enumerate(tqdm(TEST_DATALOADER)):
         # Forward pass
         loss, end_points = net(batch_data_label, DATASET_CONFIG)
@@ -185,9 +202,29 @@ def evaluate_one_epoch():
         # only for batch size = 1
         dets = {}
         dets['dets'] = np.array([np.concatenate(corners2xyzrylwh(batch_pred_map_cls[0][i][1])) for i in range(len(batch_pred_map_cls[0]))])
-        print(dets)
-        print(tracker.update(dets))
         
+        pcd.points = o3d.utility.Vector3dVector(point)
+        
+        vis.clear_geometries()
+        
+        vis.add_geometry(pcd)
+        
+        line_sets = [o3d.geometry.LineSet() for _ in range(len(batch_pred_map_cls[0]))]
+        for i in range(len(batch_pred_map_cls[0])):
+            line_sets[i].points = o3d.utility.Vector3dVector(batch_pred_map_cls[0][i][1])
+            line_sets[i].lines = o3d.utility.Vector2iVector(lines)
+            line_sets[i].colors = o3d.utility.Vector3dVector(colors)
+            vis.add_geometry(line_sets[i])
+            
+        
+        vis_ctrl.set_front([0, 0, 1])
+        vis_ctrl.set_lookat([0, 0, 1])
+        vis_ctrl.set_up([0, -1, 0])
+        
+        vis.poll_events()
+        vis.update_renderer()
+                
+        time.sleep(0.5)
         
         
         for ap_calculator in ap_calculator_list:
