@@ -340,18 +340,23 @@ def evaluate_one_epoch():
             
             frame_pre = []
             frame = []
-    
+            
             for i in range(len(match_list)):
+                
                 bbox_id = match_list[i]
+                bbox_id_already = []
                 
                 for j in range(len(batch_pred_map_cls[0])):
-                    if bbox_id == batch_pred_map_cls[0][j][3]:
+                    if bbox_id == batch_pred_map_cls[0][j][3] and bbox_id not in bbox_id_already:
                         frame.append(point[point_class[j]].T)
+                        bbox_id_already.append(bbox_id)
 
+                bbox_id_already = []
                 for j in range(len(prev[0])):
-                    if bbox_id == prev[0][j][3]:
+                    if bbox_id == prev[0][j][3] and bbox_id not in bbox_id_already:
                         frame_pre.append(prev_point[prev_class[j]].T)
-            
+                        bbox_id_already.append(bbox_id)
+                        
             pose_rel = direct_icp(frame_pre, frame)
         
         prev = batch_pred_map_cls
