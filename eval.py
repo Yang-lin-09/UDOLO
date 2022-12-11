@@ -49,7 +49,7 @@ parser.add_argument('--use_cls_nms', action='store_true', help='Use per class NM
 parser.add_argument('--use_old_type_nms', action='store_true', help='Use old type of NMS, IoBox2Area.')
 parser.add_argument('--per_class_proposal', action='store_true', help='Duplicate each proposal num_class times.')
 parser.add_argument('--nms_iou', type=float, default=0.25, help='NMS IoU threshold. [default: 0.25]')
-parser.add_argument('--conf_thresh', type=float, default=0.73,
+parser.add_argument('--conf_thresh', type=float, default=0.5,
                     help='Filter out predictions with obj prob less than it. [default: 0.05]')
 parser.add_argument('--faster_eval', action='store_true',
                     help='Faster evaluation by skippling empty bounding box removal.')
@@ -206,7 +206,7 @@ def get_index(points, bboxes):
 def get_maching_num(prev, now):
     
     if prev == None:
-        return 0
+        return 0, []
     
     num = 0 
     id_list = []
@@ -215,7 +215,60 @@ def get_maching_num(prev, now):
             if now[0][i][3] == prev[0][j][3] and now[0][i][3] != 0 and now[0][i][3] not in id_list:
                 num += 1
                 id_list.append(now[0][i][3])
-    return num
+    return num, id_list
+
+def direct_icp(frame_pre, frame, imu = None, imu_weight = None):
+    '''
+    Inputs:
+        frame_pre, frame: [nc, 3, n]
+            nc is the # clusters, n is the # points
+        imu: [4, 4]
+            rotation matrix
+        imu_weight:
+            the weight of imu information
+    Outputs:
+
+    '''
+    
+    cluster_num = len(frame_pre)
+    # # virtual points for each cluster
+    virtual_point_num = 10
+    
+    b = np.zeros((virtual_point_num * cluster_num, 1), dtype=np.float32)
+    A = np.zeros((virtual_point_num * cluster_num, 16), dtype=np.float32)
+    x = np.zeros((3, virtual_point_num), dtype=np.float32)
+    
+
+    for i in range(cluster_num):
+        cluster_pre = frame_pre[i]
+        cluster = frame[i]
+        
+        num_points_pre = frame_pre[i].shape[1]
+        num_points = frame[i].shape[1]
+        
+        cluster_bar = np.sum(cluster, 1) / num_points
+        
+        x_min_pre, y_min_pre, z_min_pre = np.min(frame_pre[i], 1)
+        x_max_pre, y_max_pre, z_max_pre = np.max(frame_pre[i], 1)
+        
+        for j in range(virtual_point_num):
+            x[0, j] = np.random.uniform(x_min_pre, x_max_pre)
+            x[1, j] = np.random.uniform(y_min_pre, y_max_pre)
+            x[2, j] = np.random.uniform(z_min_pre, z_max_pre)
+            
+            b[(i - 1) * virtual_point_num + j, 0] += np.linalg.norm(x[:, j].reshape(-1, 1) - cluster_pre) ** 2 / num_points_pre
+            b[(i - 1) * virtual_point_num + j, 0] -= np.linalg.norm(x[:, j].reshape(-1, 1) - cluster) ** 2 / num_points
+            
+            b[(i - 1) * virtual_point_num + j, 0] -= np.linalg.norm(x[: j]) ** 2
+            
+            # 3 * 9
+            L = np.kron(x[: j], np.eye(3))
+            
+            A[(i - 1) * virtual_point_num + j, :] = np.concatenate((-2 * np.dot(cluster_bar, L), -2 * cluster_bar, 2 * x[:, j], 1))
+
+    pose_rel = np.linalg.inv(A.T.dot(A)).dot(A.T).dot(b)
+    
+    return pose_rel
 
 def evaluate_one_epoch():
     stat_dict = {}
@@ -223,7 +276,6 @@ def evaluate_one_epoch():
                           for iou_thresh in AP_IOU_THRESHOLDS]
 
     net.eval()  # set model to eval mode (for bn and dp)
-    tracker = AB3DMOT()
     
     if not VIS_DISABLE:
         vis = o3d.visualization.Visualizer()
@@ -245,6 +297,7 @@ def evaluate_one_epoch():
     pred = 0
     pred_matching = 0
     gt = 0
+    
     prev = None
     
     for batch_idx, batch_data_label in enumerate(tqdm(TEST_DATALOADER)):
@@ -268,15 +321,32 @@ def evaluate_one_epoch():
         
         pred += len(batch_pred_map_cls[0])
         gt += len(batch_gt_map_cls[0])
-        pred_matching += get_maching_num(prev, batch_pred_map_cls)
+        match_num, match_list = get_maching_num(prev, batch_pred_map_cls)
+        pred_matching += match_num
         
         print('pred: {}/{}, gt: {}/{}, pred_matching: {}/{}'.format(pred, pred / (batch_idx + 1), gt, gt / (batch_idx + 1), pred_matching, pred_matching / (batch_idx + 1)))
-        prev = batch_pred_map_cls
-        
         
         point_class = get_index(point, batch_pred_map_cls[0])
-        print(point_class)
         
+        if match_num >= 4:
+            
+            frame_pre = []
+            frame = []
+    
+            for i in range(len(match_list)):
+                bbox_id = match_list[i]
+                
+                for j in range(len(batch_pred_map_cls[0])):
+                    if bbox_id == batch_pred_map_cls[0][i][3]:
+                        frame.append(point[point_class[j]].T)
+
+                for j in range(len(prev[0])):
+                    if bbox_id == prev[0][i][3]:
+                        frame_pre.append(point[point_class[j]].T)
+            
+            pose_rel = direct_icp(frame, frame_pre)
+        
+        prev = batch_pred_map_cls
         # only for batch size = 1
         # dets = {}
         # dets['dets'] = np.array([np.concatenate(corners2xyzrylwh(batch_pred_map_cls[0][i][1])) for i in range(len(batch_pred_map_cls[0]))])
