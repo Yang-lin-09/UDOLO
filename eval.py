@@ -34,7 +34,7 @@ parser.add_argument('--model', default='votenet', help='Model file name [default
 parser.add_argument('--dataset', default='sunrgbd', help='Dataset name. sunrgbd or scannet. [default: sunrgbd]')
 parser.add_argument('--checkpoint_path', default=None, help='Model checkpoint path [default: None]')
 parser.add_argument('--dump_dir', default=None, help='Dump dir to save sample outputs [default: None]')
-parser.add_argument('--num_point', type=int, default=50000, help='Point Number [default: 20000]')
+parser.add_argument('--num_point', type=int, default=100000, help='Point Number [default: 20000]')
 parser.add_argument('--num_target', type=int, default=32, help='Point Number [default: 256]')
 parser.add_argument('--batch_size', type=int, default=8, help='Batch Size during training [default: 8]')
 parser.add_argument('--vote_factor', type=int, default=1, help='Number of votes generated from each seed [default: 1]')
@@ -49,7 +49,7 @@ parser.add_argument('--use_cls_nms', action='store_true', help='Use per class NM
 parser.add_argument('--use_old_type_nms', action='store_true', help='Use old type of NMS, IoBox2Area.')
 parser.add_argument('--per_class_proposal', action='store_true', help='Duplicate each proposal num_class times.')
 parser.add_argument('--nms_iou', type=float, default=0.25, help='NMS IoU threshold. [default: 0.25]')
-parser.add_argument('--conf_thresh', type=float, default=0.8,
+parser.add_argument('--conf_thresh', type=float, default=0.73,
                     help='Filter out predictions with obj prob less than it. [default: 0.05]')
 parser.add_argument('--faster_eval', action='store_true',
                     help='Faster evaluation by skippling empty bounding box removal.')
@@ -74,6 +74,8 @@ parser.add_argument('--top_n_pred', type=int, default=32, help='number of predic
 parser.add_argument('--view_coord', type=str, default='camera', help='view coord')
 parser.add_argument('--world_coord', type=str, default='depth', help='world coord')
 
+parser.add_argument('--vis_disable', action = 'store_true')
+
 FLAGS = parser.parse_args()
 
 if FLAGS.use_cls_nms:
@@ -92,6 +94,8 @@ AP_IOU_THRESHOLDS = [float(x) for x in FLAGS.ap_iou_thresholds.split(',')]
 if not os.path.exists(DUMP_DIR): os.mkdir(DUMP_DIR)
 DUMP_FOUT = open(os.path.join(DUMP_DIR, 'log_eval.txt'), 'w')
 DUMP_FOUT.write(str(FLAGS) + '\n')
+
+VIS_DISABLE = FLAGS.vis_disable
 
 
 def log_string(out_str):
@@ -156,6 +160,63 @@ CONFIG_DICT = {'remove_empty_box': (not FLAGS.faster_eval), 'use_3d_nms': FLAGS.
 
 # ------------------------------------------------------------------------- GLOBAL CONFIG END
 
+def is_inbbox(point, bbox):
+    '''
+            7 -------- 4                 z
+           /|         /|                /
+          6 -------- 5 .               /
+          | |        | |              |--------> x
+          . 3 -------- 0              |
+          |/         |/               |
+          2 -------- 1                y
+    '''
+    
+    i = bbox[3] - bbox[2]
+    j = bbox[1] - bbox[2]
+    k = bbox[6] - bbox[2]
+    v = point - bbox[2]
+    
+    if 0 < np.dot(v, i) and np.dot(v, i) < np.dot(i, i):
+        if 0 < np.dot(v, j) and np.dot(v, j) < np.dot(j, j):
+            if 0 < np.dot(v, k) and np.dot(v, k) < np.dot(k, k):
+                return True
+            return False
+        return False
+    return False
+    
+    
+def get_index(points, bboxes):
+    
+    '''
+    Reference: https://math.stackexchange.com/questions/1472049/check-if-a-point-is-inside-a-rectangular-shaped-area-3d
+    '''
+    
+    point_class = {}
+    
+    for i in range(points.shape[0]):
+        for j in range(len(bboxes)):
+            if is_inbbox(points[i], bboxes[j][1]):
+                if j in point_class.keys():
+                    point_class[j].append(i)
+                else:
+                    point_class[j] = [i, ]
+    
+    return point_class
+
+def get_maching_num(prev, now):
+    
+    if prev == None:
+        return 0
+    
+    num = 0 
+    id_list = []
+    for i in range(len(now[0])):
+        for j in range(len(prev[0])):
+            if now[0][i][3] == prev[0][j][3] and now[0][i][3] != 0 and now[0][i][3] not in id_list:
+                num += 1
+                id_list.append(now[0][i][3])
+    return num
+
 def evaluate_one_epoch():
     stat_dict = {}
     ap_calculator_list = [APCalculator(iou_thresh, DATASET_CONFIG.class2type) \
@@ -164,11 +225,12 @@ def evaluate_one_epoch():
     net.eval()  # set model to eval mode (for bn and dp)
     tracker = AB3DMOT()
     
-    vis = o3d.visualization.Visualizer()
-    pcd = o3d.geometry.PointCloud()
-    vis.create_window()
-    
-    vis_ctrl = vis.get_view_control()
+    if not VIS_DISABLE:
+        vis = o3d.visualization.Visualizer()
+        pcd = o3d.geometry.PointCloud()
+        vis.create_window()
+        
+        vis_ctrl = vis.get_view_control()
 
     
     initialized = False
@@ -179,6 +241,11 @@ def evaluate_one_epoch():
 
     # Use the same color for all lines
     colors = [[1, 0, 0] for _ in range(len(lines))]
+    
+    pred = 0
+    pred_matching = 0
+    gt = 0
+    prev = None
     
     for batch_idx, batch_data_label in enumerate(tqdm(TEST_DATALOADER)):
         # Forward pass
@@ -199,32 +266,44 @@ def evaluate_one_epoch():
 
         point = batch_data_label['point_clouds_camera'].cpu().numpy()[0]
         
+        pred += len(batch_pred_map_cls[0])
+        gt += len(batch_gt_map_cls[0])
+        pred_matching += get_maching_num(prev, batch_pred_map_cls)
+        
+        print('pred: {}/{}, gt: {}/{}, pred_matching: {}/{}'.format(pred, pred / (batch_idx + 1), gt, gt / (batch_idx + 1), pred_matching, pred_matching / (batch_idx + 1)))
+        prev = batch_pred_map_cls
+        
+        
+        point_class = get_index(point, batch_pred_map_cls[0])
+        print(point_class)
+        
         # only for batch size = 1
-        dets = {}
-        dets['dets'] = np.array([np.concatenate(corners2xyzrylwh(batch_pred_map_cls[0][i][1])) for i in range(len(batch_pred_map_cls[0]))])
+        # dets = {}
+        # dets['dets'] = np.array([np.concatenate(corners2xyzrylwh(batch_pred_map_cls[0][i][1])) for i in range(len(batch_pred_map_cls[0]))])
         
-        pcd.points = o3d.utility.Vector3dVector(point)
-        
-        vis.clear_geometries()
-        
-        vis.add_geometry(pcd)
-        
-        line_sets = [o3d.geometry.LineSet() for _ in range(len(batch_pred_map_cls[0]))]
-        for i in range(len(batch_pred_map_cls[0])):
-            line_sets[i].points = o3d.utility.Vector3dVector(batch_pred_map_cls[0][i][1])
-            line_sets[i].lines = o3d.utility.Vector2iVector(lines)
-            line_sets[i].colors = o3d.utility.Vector3dVector(colors)
-            vis.add_geometry(line_sets[i])
+        if not VIS_DISABLE:
+            pcd.points = o3d.utility.Vector3dVector(point)
             
-        
-        vis_ctrl.set_front([0, 0, 1])
-        vis_ctrl.set_lookat([0, 0, 1])
-        vis_ctrl.set_up([0, -1, 0])
-        
-        vis.poll_events()
-        vis.update_renderer()
+            vis.clear_geometries()
+            
+            vis.add_geometry(pcd)
+            
+            line_sets = [o3d.geometry.LineSet() for _ in range(len(batch_pred_map_cls[0]))]
+            for i in range(len(batch_pred_map_cls[0])):
                 
-        time.sleep(0.5)
+                line_sets[i].points = o3d.utility.Vector3dVector(batch_pred_map_cls[0][i][1])
+                line_sets[i].lines = o3d.utility.Vector2iVector(lines)
+                line_sets[i].colors = o3d.utility.Vector3dVector(colors)
+                vis.add_geometry(line_sets[i])
+            
+            vis_ctrl.set_front([0, 0, 1])
+            vis_ctrl.set_lookat([0, 0, 1])
+            vis_ctrl.set_up([0, -1, 0])
+            
+            vis.poll_events()
+            vis.update_renderer()
+                    
+            time.sleep(0.5)
         
         
         for ap_calculator in ap_calculator_list:

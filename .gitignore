@@ -1,2 +1,5 @@
 build/
 *.pyc
+*.tar
+*.pkl
+*.zip
