@@ -233,12 +233,12 @@ def direct_icp(frame_pre, frame, imu = None, imu_weight = None):
     cluster_num = len(frame_pre)
     # # virtual points for each cluster
     virtual_point_num = 10
+    print(len(frame_pre), len(frame))
     
     b = np.zeros((virtual_point_num * cluster_num, 1), dtype=np.float32)
     A = np.zeros((virtual_point_num * cluster_num, 16), dtype=np.float32)
     x = np.zeros((3, virtual_point_num), dtype=np.float32)
     
-
     for i in range(cluster_num):
         cluster_pre = frame_pre[i]
         cluster = frame[i]
@@ -251,23 +251,29 @@ def direct_icp(frame_pre, frame, imu = None, imu_weight = None):
         x_min_pre, y_min_pre, z_min_pre = np.min(frame_pre[i], 1)
         x_max_pre, y_max_pre, z_max_pre = np.max(frame_pre[i], 1)
         
+        print(x_max_pre, x_min_pre, y_max_pre, y_min_pre, z_max_pre, z_min_pre)
+        
         for j in range(virtual_point_num):
-            x[0, j] = np.random.uniform(x_min_pre, x_max_pre)
-            x[1, j] = np.random.uniform(y_min_pre, y_max_pre)
-            x[2, j] = np.random.uniform(z_min_pre, z_max_pre)
-            
-            b[(i - 1) * virtual_point_num + j, 0] += np.linalg.norm(x[:, j].reshape(-1, 1) - cluster_pre) ** 2 / num_points_pre
-            b[(i - 1) * virtual_point_num + j, 0] -= np.linalg.norm(x[:, j].reshape(-1, 1) - cluster) ** 2 / num_points
+            x[0, j] = (x_max_pre - x_min_pre) * np.random.rand() + x_min_pre
+            x[1, j] = (y_max_pre - y_min_pre) * np.random.rand() + y_min_pre
+            x[2, j] = (z_max_pre - z_min_pre) * np.random.rand() + z_min_pre
+            print(x[:, j])
+            for k in range(num_points_pre):
+                b[(i - 1) * virtual_point_num + j, 0] += np.linalg.norm(x[:, j] - cluster_pre[:, k]) ** 2 / num_points_pre
+            for k in range(num_points):
+                b[(i - 1) * virtual_point_num + j, 0] -= np.linalg.norm(x[:, j] - cluster[:, k]) ** 2 / num_points
             
             b[(i - 1) * virtual_point_num + j, 0] -= np.linalg.norm(x[: j]) ** 2
             
             # 3 * 9
-            L = np.kron(x[: j], np.eye(3))
+            L = np.kron(x[:, j], np.eye(3))
             
-            A[(i - 1) * virtual_point_num + j, :] = np.concatenate((-2 * np.dot(cluster_bar, L), -2 * cluster_bar, 2 * x[:, j], 1))
-
+            A[(i - 1) * virtual_point_num + j, :] = np.concatenate((-2 * np.dot(cluster_bar, L), -2 * cluster_bar, 2 * x[:, j], [1, ]))
+    
+    print(b)
     pose_rel = np.linalg.inv(A.T.dot(A)).dot(A.T).dot(b)
     
+    print(pose_rel)
     return pose_rel
 
 def evaluate_one_epoch():
@@ -299,6 +305,8 @@ def evaluate_one_epoch():
     gt = 0
     
     prev = None
+    prev_class = None
+    prev_point = None
     
     for batch_idx, batch_data_label in enumerate(tqdm(TEST_DATALOADER)):
         # Forward pass
@@ -337,16 +345,18 @@ def evaluate_one_epoch():
                 bbox_id = match_list[i]
                 
                 for j in range(len(batch_pred_map_cls[0])):
-                    if bbox_id == batch_pred_map_cls[0][i][3]:
+                    if bbox_id == batch_pred_map_cls[0][j][3]:
                         frame.append(point[point_class[j]].T)
 
                 for j in range(len(prev[0])):
-                    if bbox_id == prev[0][i][3]:
-                        frame_pre.append(point[point_class[j]].T)
+                    if bbox_id == prev[0][j][3]:
+                        frame_pre.append(prev_point[prev_class[j]].T)
             
-            pose_rel = direct_icp(frame, frame_pre)
+            pose_rel = direct_icp(frame_pre, frame)
         
         prev = batch_pred_map_cls
+        prev_class = point_class
+        prev_point = point
         # only for batch size = 1
         # dets = {}
         # dets['dets'] = np.array([np.concatenate(corners2xyzrylwh(batch_pred_map_cls[0][i][1])) for i in range(len(batch_pred_map_cls[0]))])
