@@ -21,6 +21,8 @@ def get_point_cloud(root_path, scene_name, image_index):
     depth_dir = os.path.join(root_path, scene_name, 'depth')
     intrinsic_dir = os.path.join(root_path, scene_name, 'intrinsic')
     d = cv2.imread(os.path.join(depth_dir, image).replace("jpg", "png"), -1).astype(np.float32)
+    pose = np.genfromtxt(os.path.join(root_path, scene_name, 'pose', image.replace("jpg", "txt")))
+    
     d /= 1000
     h, w = d.shape
     xx, yy = np.meshgrid(np.arange(w), np.arange(h))
@@ -36,7 +38,7 @@ def get_point_cloud(root_path, scene_name, image_index):
     pc = np.dot(screen_to_camera, pc.T).T
     pos_z = np.nonzero(pc[:, 2] > 0)[0]
     point_cloud = pc[pos_z]
-    return point_cloud[:, :3]
+    return point_cloud[:, :3], pose
 
 
 def rotate_view_to_align_box3d(Tr_camera_to_scan, box3d_list):

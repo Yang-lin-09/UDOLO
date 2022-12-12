@@ -102,7 +102,7 @@ class ScannetSVDetectionDataset(Dataset):
         image_index = item["im_index"]
         type = item['labels']
         label = self.type2class(type)
-        point_cloud = get_point_cloud(self.root, scene_name, image_index)
+        point_cloud, pose = get_point_cloud(self.root, scene_name, image_index)
         point_cloud, choices = pc_util.random_sampling(point_cloud, self.num_points, return_choices=True,
                                                        fix_seed=self.fix_seed)
 
@@ -238,6 +238,7 @@ class ScannetSVDetectionDataset(Dataset):
         ret_dict['max_gt_bboxes'] = max_bboxes
 
         ret_dict['scene_name'] = scene_name
+        ret_dict['pose'] = pose
 
         if 'train' not in self.split:
             point_cloud_camera = (np.linalg.inv(rot_mat) @ point_cloud[:, :3].T).T
@@ -253,6 +254,7 @@ if __name__ == '__main__':
     for i_example in range(9000):
         # try:
         example = dset.__getitem__(i_example)
+        print(example['pose'])
         # except:
         #     pass
         # pc_util.write_ply(example['point_clouds'], 'pc_{}.ply'.format(i_example))

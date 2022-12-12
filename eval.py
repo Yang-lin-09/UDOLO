@@ -49,7 +49,7 @@ parser.add_argument('--use_cls_nms', action='store_true', help='Use per class NM
 parser.add_argument('--use_old_type_nms', action='store_true', help='Use old type of NMS, IoBox2Area.')
 parser.add_argument('--per_class_proposal', action='store_true', help='Duplicate each proposal num_class times.')
 parser.add_argument('--nms_iou', type=float, default=0.25, help='NMS IoU threshold. [default: 0.25]')
-parser.add_argument('--conf_thresh', type=float, default=0.5,
+parser.add_argument('--conf_thresh', type=float, default=0.73,
                     help='Filter out predictions with obj prob less than it. [default: 0.05]')
 parser.add_argument('--faster_eval', action='store_true',
                     help='Faster evaluation by skippling empty bounding box removal.')
@@ -217,6 +217,20 @@ def get_maching_num(prev, now):
                 id_list.append(now[0][i][3])
     return num, id_list
 
+def get_pose_err(gt_pose_pre, gt_pose, pose_rel):
+    
+    '''
+    Inputs:
+        gt_pose_pre, gt_pose: 4 * 4
+        pose_rel: 3 * 4
+    '''
+    
+    rel_poses = np.matmul(gt_pose_pre, np.linalg.inv(gt_pose)).astype(np.float32)[0]
+    r_err = np.linalg.norm((rel_poses[:3, :3] - pose_rel[:3, :3]), 'fro')
+    t_err = np.linalg.norm((rel_poses[:3, 3] - pose_rel[:, 3]))
+    print(rel_poses)
+    print(r_err, t_err)
+
 def direct_icp(frame_pre, frame, imu = None, imu_weight = None):
     '''
     Inputs:
@@ -233,45 +247,46 @@ def direct_icp(frame_pre, frame, imu = None, imu_weight = None):
     cluster_num = len(frame_pre)
     # # virtual points for each cluster
     virtual_point_num = 10
-    print(len(frame_pre), len(frame))
     
-    b = np.zeros((virtual_point_num * cluster_num, 1), dtype=np.float32)
-    A = np.zeros((virtual_point_num * cluster_num, 16), dtype=np.float32)
-    x = np.zeros((3, virtual_point_num), dtype=np.float32)
+    b = np.zeros((virtual_point_num * cluster_num, 1), dtype=np.float64)
+    A = np.zeros((virtual_point_num * cluster_num, 16), dtype=np.float64)
+    x = np.zeros((3, virtual_point_num), dtype=np.float64)
     
     for i in range(cluster_num):
         cluster_pre = frame_pre[i]
         cluster = frame[i]
         
+        
         num_points_pre = frame_pre[i].shape[1]
         num_points = frame[i].shape[1]
         
+        print(num_points_pre, num_points)
+        
         cluster_bar = np.sum(cluster, 1) / num_points
+        
         
         x_min_pre, y_min_pre, z_min_pre = np.min(frame_pre[i], 1)
         x_max_pre, y_max_pre, z_max_pre = np.max(frame_pre[i], 1)
-        
-        print(x_max_pre, x_min_pre, y_max_pre, y_min_pre, z_max_pre, z_min_pre)
         
         for j in range(virtual_point_num):
             x[0, j] = (x_max_pre - x_min_pre) * np.random.rand() + x_min_pre
             x[1, j] = (y_max_pre - y_min_pre) * np.random.rand() + y_min_pre
             x[2, j] = (z_max_pre - z_min_pre) * np.random.rand() + z_min_pre
-            print(x[:, j])
             for k in range(num_points_pre):
-                b[(i - 1) * virtual_point_num + j, 0] += np.linalg.norm(x[:, j] - cluster_pre[:, k]) ** 2 / num_points_pre
-            for k in range(num_points):
-                b[(i - 1) * virtual_point_num + j, 0] -= np.linalg.norm(x[:, j] - cluster[:, k]) ** 2 / num_points
+                b[i * virtual_point_num + j, 0] += np.linalg.norm(x[:, j] - cluster_pre[:, k]) ** 2 / num_points_pre
             
-            b[(i - 1) * virtual_point_num + j, 0] -= np.linalg.norm(x[: j]) ** 2
+            for k in range(num_points):
+                b[i * virtual_point_num + j, 0] -= np.linalg.norm(cluster[:, k]) ** 2 / num_points
+              
+            b[i * virtual_point_num + j, 0] -= np.linalg.norm(x[:, j]) ** 2
             
             # 3 * 9
             L = np.kron(x[:, j], np.eye(3))
             
-            A[(i - 1) * virtual_point_num + j, :] = np.concatenate((-2 * np.dot(cluster_bar, L), -2 * cluster_bar, 2 * x[:, j], [1, ]))
+            A[i * virtual_point_num + j, :] = np.concatenate((-2 * np.dot(cluster_bar, L), -2 * cluster_bar, 2 * x[:, j], [1, ]))
     
-    print(b)
     pose_rel = np.linalg.inv(A.T.dot(A)).dot(A.T).dot(b)
+    pose_rel = pose_rel[:12, :].reshape(3, -1)[:, :4]
     
     print(pose_rel)
     return pose_rel
@@ -307,6 +322,7 @@ def evaluate_one_epoch():
     prev = None
     prev_class = None
     prev_point = None
+    prev_pose = None
     
     for batch_idx, batch_data_label in enumerate(tqdm(TEST_DATALOADER)):
         # Forward pass
@@ -326,6 +342,7 @@ def evaluate_one_epoch():
         batch_gt_map_cls = parse_groundtruths(end_points, CONFIG_DICT)
 
         point = batch_data_label['point_clouds_camera'].cpu().numpy()[0]
+        pose = batch_data_label['pose'].cpu().numpy()
         
         pred += len(batch_pred_map_cls[0])
         gt += len(batch_gt_map_cls[0])
@@ -358,10 +375,13 @@ def evaluate_one_epoch():
                         bbox_id_already.append(bbox_id)
                         
             pose_rel = direct_icp(frame_pre, frame)
+            
+            get_pose_err(prev_pose, pose, pose_rel)
         
         prev = batch_pred_map_cls
         prev_class = point_class
         prev_point = point
+        prev_pose = pose
         # only for batch size = 1
         # dets = {}
         # dets['dets'] = np.array([np.concatenate(corners2xyzrylwh(batch_pred_map_cls[0][i][1])) for i in range(len(batch_pred_map_cls[0]))])
