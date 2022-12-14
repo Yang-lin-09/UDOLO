@@ -163,7 +163,7 @@ def get_pose_err(gt_pose_pre, gt_pose, pose_rel):
         pose_rel: 3 * 4
     '''
     
-    rel_poses = np.matmul(np.linalg.inv(gt_pose_pre), gt_pose).astype(np.float32)[0]
+    rel_poses = np.matmul(np.linalg.inv(gt_pose_pre), gt_pose).astype(np.float32)
     r_err = np.linalg.norm((rel_poses[:3, :3] - pose_rel[:3, :3]), 'fro')
     t_err = np.linalg.norm((rel_poses[:3, 3] - pose_rel[:, 3]))
     print(rel_poses)
@@ -290,9 +290,9 @@ if __name__ == '__main__':
     matching_num = 0
     prev_points = None
     prev_keys = None
+
         
     for i in range(0, len(points)):
-        
         points_class = get_index(points[i], bbox[i])
         keys = list(points_class.keys())
         print(keys)
@@ -302,7 +302,7 @@ if __name__ == '__main__':
                 if j in keys:
                     matching_num += 1
         
-        if matching_num > 4:
+        if matching_num >= 4:
             frame = []
             frame_pre = []
             for j in prev_keys:
@@ -313,6 +313,8 @@ if __name__ == '__main__':
             pose_rel = direct_icp(frame_pre, frame)
             get_pose_err(pose[i - 1], pose[i], pose_rel)
         
+        prev_points = points_class
+        prev_keys = keys
         matching_num = 0
     
         """ # pcd.points = o3d.utility.Vector3dVector(world_point)
