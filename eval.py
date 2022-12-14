@@ -225,7 +225,7 @@ def get_pose_err(gt_pose_pre, gt_pose, pose_rel):
         pose_rel: 3 * 4
     '''
     
-    rel_poses = np.matmul(gt_pose_pre, np.linalg.inv(gt_pose)).astype(np.float32)[0]
+    rel_poses = np.matmul(np.linalg.inv(gt_pose_pre), gt_pose).astype(np.float32)[0]
     r_err = np.linalg.norm((rel_poses[:3, :3] - pose_rel[:3, :3]), 'fro')
     t_err = np.linalg.norm((rel_poses[:3, 3] - pose_rel[:, 3]))
     print(rel_poses)
