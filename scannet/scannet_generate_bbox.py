@@ -166,8 +166,9 @@ def get_pose_err(gt_pose_pre, gt_pose, pose_rel):
     rel_poses = np.matmul(np.linalg.inv(gt_pose_pre), gt_pose).astype(np.float32)
     r_err = np.linalg.norm((rel_poses[:3, :3] - pose_rel[:3, :3]), 'fro')
     t_err = np.linalg.norm((rel_poses[:3, 3] - pose_rel[:, 3]))
-    print(rel_poses)
-    print(r_err, t_err)
+
+    print('error:', r_err, t_err)
+    return r_err, t_err
 
 def direct_icp(frame_pre, frame, imu = None, imu_weight = None):
     '''
@@ -198,7 +199,6 @@ def direct_icp(frame_pre, frame, imu = None, imu_weight = None):
         num_points_pre = frame_pre[i].shape[1]
         num_points = frame[i].shape[1]
         
-        print(num_points_pre, num_points)
         
         cluster_bar = np.sum(cluster, 1) / num_points
         
@@ -226,7 +226,6 @@ def direct_icp(frame_pre, frame, imu = None, imu_weight = None):
     pose_rel = np.linalg.inv(A.T.dot(A)).dot(A.T).dot(b)
     pose_rel = pose_rel[:12, :].reshape(3, -1)[:, :4]
     
-    print(pose_rel)
     return pose_rel
 
 if __name__ == '__main__':
@@ -290,7 +289,8 @@ if __name__ == '__main__':
     matching_num = 0
     prev_points = None
     prev_keys = None
-
+    r_err_list = []
+    t_err_list = []
         
     for i in range(0, len(points)):
         points_class = get_index(points[i], bbox[i])
@@ -311,8 +311,12 @@ if __name__ == '__main__':
                     frame_pre.append(points[i - 1][prev_points[j]].T)
         
             pose_rel = direct_icp(frame_pre, frame)
-            get_pose_err(pose[i - 1], pose[i], pose_rel)
-        
+            r_err, t_err = get_pose_err(pose[i - 1], pose[i], pose_rel)
+            
+            r_err_list.append(r_err)
+            t_err_list.append(t_err)
+            
+            print('mean err:', sum(r_err_list) / len(r_err_list), sum(t_err_list) / len(t_err_list))
         prev_points = points_class
         prev_keys = keys
         matching_num = 0
