@@ -19,7 +19,6 @@ POINT_PATH = '/home/ylin/Code/UDOLO/scannet/scene0011_00_raw/scene0011_00_vert.n
     pose file: listdir out of order
 '''
 
-
 def generate_depth(screen_to_camera):
     
     full_name_list = os.listdir(DEPTH_DIR)
@@ -215,7 +214,7 @@ def direct_icp(frame_pre, frame, imu = None, imu_weight = None):
             
             for k in range(num_points):
                 b[i * virtual_point_num + j, 0] -= np.linalg.norm(cluster[:, k]) ** 2 / num_points
-              
+                      
             b[i * virtual_point_num + j, 0] -= np.linalg.norm(x[:, j]) ** 2
             
             # 3 * 9
@@ -223,7 +222,12 @@ def direct_icp(frame_pre, frame, imu = None, imu_weight = None):
             
             A[i * virtual_point_num + j, :] = np.concatenate((-2 * np.dot(cluster_bar, L), -2 * cluster_bar, 2 * x[:, j], [1, ]))
     
-    pose_rel = np.linalg.inv(A.T.dot(A)).dot(A.T).dot(b)
+    cluster_matrix = np.eye(cluster_num)
+    for i in range(cluster_num):
+        cluster_matrix[i, i] = frame_pre[i].shape[1]
+    W = np.kron(cluster_matrix, np.eye(virtual_point_num))
+    
+    pose_rel = np.linalg.inv(A.T.dot(W).dot(A)).dot(A.T).dot(b)
     pose_rel = pose_rel[:12, :].reshape(3, -1)[:, :4]
     
     return pose_rel
@@ -238,11 +242,13 @@ if __name__ == '__main__':
     pose = np.linalg.inv(np.genfromtxt(os.path.join(POSE_DIR, '0.txt')))
     r = pose[:3, :3]
     t = pose[:3, 3]
-    world_point = np.dot(world_point, r.T) + t
-    world_bbox = (np.dot(world_bbox.reshape(-1, 3), r.T) + t).reshape(-1, 8, 3)
-    look_at = np.dot(r, np.array([0, 1.0, 0])) """
-    # print(world_point.shape)
-    # print(world_bbox.shape)
+    world_point_1 = np.dot(world_point, r.T) + t
+    
+    pose = np.linalg.inv(np.genfromtxt(os.path.join(POSE_DIR, '1.txt')))
+    r = pose[:3, :3]
+    t = pose[:3, 3]
+    world_point_2 = np.dot(world_point, r.T) + t """
+    
     
     """ points = generate_depth(screen_to_camera)
     pose = generate_pose()
@@ -263,13 +269,11 @@ if __name__ == '__main__':
     points = scene11['points']
     pose = scene11['pose']
     bbox = scene11['bbox']
-   
+    # points = [world_point_1, world_point_2]
     
     print('loaded!')
     
     """ vis = o3d.visualization.Visualizer()
-    
-    
     
     pcd = o3d.geometry.PointCloud()
     pcd2 = o3d.geometry.PointCloud()
@@ -309,7 +313,7 @@ if __name__ == '__main__':
                 if j in keys:
                     frame.append(points[i][points_class[j]].T)
                     frame_pre.append(points[i - 1][prev_points[j]].T)
-        
+
             pose_rel = direct_icp(frame_pre, frame)
             r_err, t_err = get_pose_err(pose[i - 1], pose[i], pose_rel)
             
@@ -322,7 +326,7 @@ if __name__ == '__main__':
         matching_num = 0
     
         """ # pcd.points = o3d.utility.Vector3dVector(world_point)
-        pcd2.points = o3d.utility.Vector3dVector(points[0])
+        pcd2.points = o3d.utility.Vector3dVector(points[i])
         
         # pcd.paint_uniform_color([0, 1, 0])
         # pcd2.paint_uniform_color([0, 0, 1])
