@@ -4,6 +4,7 @@ import os
 import pickle
 import open3d as o3d
 import time
+import argparse
 
 DATA_PATH = '/home/ylin/Code/UDOLO/scannet/scene0011_00_raw/scene0011_00_unaligned_bbox.npy'
 INTRI_PATH = '/home/ylin/Code/UDOLO/scannet/scans/scene0011_00/intrinsic/intrinsic_depth.txt'
@@ -166,6 +167,8 @@ def get_pose_err(gt_pose_pre, gt_pose, pose_rel):
     r_err = np.linalg.norm((rel_poses[:3, :3] - pose_rel[:3, :3]), 'fro')
     t_err = np.linalg.norm((rel_poses[:3, 3] - pose_rel[:, 3]))
 
+    print('gt rel pose:', rel_poses)
+    print('estimate pose:', pose_rel)
     print('error:', r_err, t_err)
     return r_err, t_err
 
@@ -227,27 +230,33 @@ def direct_icp(frame_pre, frame, imu = None, imu_weight = None):
         cluster_matrix[i, i] = frame_pre[i].shape[1]
     W = np.kron(cluster_matrix, np.eye(virtual_point_num))
     
-    pose_rel = np.linalg.inv(A.T.dot(W).dot(A)).dot(A.T).dot(b)
+    pose_rel = np.linalg.inv(A.T.dot(A)).dot(A.T).dot(b)
     pose_rel = pose_rel[:12, :].reshape(3, -1)[:, :4]
     
     return pose_rel
 
 if __name__ == '__main__':
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--vis_enable', action = 'store_true')
+    FLAGS = parser.parse_args()
+    
     world_bbox_ = np.load(DATA_PATH)
     world_bbox = get_3d_bbox(world_bbox_)
     intr = np.genfromtxt(INTRI_PATH)[:3, :3]
     screen_to_camera = np.linalg.inv(intr)
     
-    """ world_point = np.load(POINT_PATH)[:, 0:3].astype(np.float32)
+    world_point = np.load(POINT_PATH)[:, 0:3].astype(np.float32)
     pose = np.linalg.inv(np.genfromtxt(os.path.join(POSE_DIR, '0.txt')))
     r = pose[:3, :3]
     t = pose[:3, 3]
     world_point_1 = np.dot(world_point, r.T) + t
     
-    pose = np.linalg.inv(np.genfromtxt(os.path.join(POSE_DIR, '1.txt')))
-    r = pose[:3, :3]
-    t = pose[:3, 3]
-    world_point_2 = np.dot(world_point, r.T) + t """
+    pose_1 = np.linalg.inv(np.genfromtxt(os.path.join(POSE_DIR, '1.txt')))
+    rel_poses = np.matmul(np.linalg.inv(pose), pose_1).astype(np.float32)
+    r = rel_poses[:3, :3]
+    t = rel_poses[:3, 3]
+    world_point_2 = np.dot(world_point_1, r.T) + t
     
     
     """ points = generate_depth(screen_to_camera)
@@ -269,26 +278,27 @@ if __name__ == '__main__':
     points = scene11['points']
     pose = scene11['pose']
     bbox = scene11['bbox']
-    # points = [world_point_1, world_point_2]
+    points = [world_point_1, world_point_2]
     
     print('loaded!')
     
-    """ vis = o3d.visualization.Visualizer()
-    
-    pcd = o3d.geometry.PointCloud()
-    pcd2 = o3d.geometry.PointCloud()
-    vis.create_window()
-    
-    vis_ctrl = vis.get_view_control()
-    opt = vis.get_render_option()
-    
-    
-    lines = [[0, 1], [1, 2], [2, 3], [0, 3],
-        [4, 5], [5, 6], [6, 7], [4, 7],
-        [0, 4], [1, 5], [2, 6], [3, 7]]
+    if FLAGS.vis_enable:
+        vis = o3d.visualization.Visualizer()
+        
+        pcd = o3d.geometry.PointCloud()
+        pcd2 = o3d.geometry.PointCloud()
+        vis.create_window()
+        
+        vis_ctrl = vis.get_view_control()
+        opt = vis.get_render_option()
+        
+        
+        lines = [[0, 1], [1, 2], [2, 3], [0, 3],
+            [4, 5], [5, 6], [6, 7], [4, 7],
+            [0, 4], [1, 5], [2, 6], [3, 7]]
 
-    # Use the same color for all lines
-    colors = [[1, 0, 0] for _ in range(len(lines))] """
+        # Use the same color for all lines
+        colors = [[1, 0, 0] for _ in range(len(lines))]
     
     matching_num = 0
     prev_points = None
@@ -324,31 +334,33 @@ if __name__ == '__main__':
         prev_points = points_class
         prev_keys = keys
         matching_num = 0
-    
-        """ # pcd.points = o3d.utility.Vector3dVector(world_point)
-        pcd2.points = o3d.utility.Vector3dVector(points[i])
         
-        # pcd.paint_uniform_color([0, 1, 0])
-        # pcd2.paint_uniform_color([0, 0, 1])
         
-        vis.clear_geometries()
-        
-        # vis.add_geometry(pcd)
-        vis.add_geometry(pcd2)
-        
-        line_sets = [o3d.geometry.LineSet() for _ in range(bbox[i].shape[0])]
-        for j in range(bbox[i].shape[0]):
-            line_sets[j].points = o3d.utility.Vector3dVector(bbox[i][j])
-            line_sets[j].lines = o3d.utility.Vector2iVector(lines)
-            line_sets[j].colors = o3d.utility.Vector3dVector(colors)
-            vis.add_geometry(line_sets[j])
-        
-        #vis_ctrl.set_front([0, 1, 0])
-        #vis_ctrl.set_lookat(look_at)
-        #vis_ctrl.set_up([0, 0, 1])
-        opt.show_coordinate_frame = True
-        
-        vis.poll_events()
-        vis.update_renderer()
-                
-        time.sleep(0.5) """
+        if FLAGS.vis_enable:
+            # pcd.points = o3d.utility.Vector3dVector(world_point)
+            pcd2.points = o3d.utility.Vector3dVector(points[i])
+            
+            # pcd.paint_uniform_color([0, 1, 0])
+            # pcd2.paint_uniform_color([0, 0, 1])
+            
+            vis.clear_geometries()
+            
+            # vis.add_geometry(pcd)
+            vis.add_geometry(pcd2)
+            
+            line_sets = [o3d.geometry.LineSet() for _ in range(bbox[i].shape[0])]
+            for j in range(bbox[i].shape[0]):
+                line_sets[j].points = o3d.utility.Vector3dVector(bbox[i][j])
+                line_sets[j].lines = o3d.utility.Vector2iVector(lines)
+                line_sets[j].colors = o3d.utility.Vector3dVector(colors)
+                vis.add_geometry(line_sets[j])
+            
+            #vis_ctrl.set_front([0, 1, 0])
+            #vis_ctrl.set_lookat(look_at)
+            #vis_ctrl.set_up([0, 0, 1])
+            opt.show_coordinate_frame = True
+            vis.run()
+            vis.poll_events()
+            vis.update_renderer()
+                    
+            time.sleep(20)
