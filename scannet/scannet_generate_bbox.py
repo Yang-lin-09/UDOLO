@@ -47,7 +47,7 @@ def generate_pose():
     full_pose = []
     
     for i in range(len(full_name_list)):
-        pose = np.genfromtxt(os.path.join(POSE_DIR, full_name_list[i]))
+        pose = np.genfromtxt(os.path.join(POSE_DIR, '{}.txt'.format(i)))
         full_pose.append(pose)
     
     return full_pose
@@ -163,10 +163,10 @@ def get_pose_err(gt_pose_pre, gt_pose, pose_rel):
         pose_rel: 3 * 4
     '''
     
-    rel_poses = np.matmul(np.linalg.inv(gt_pose_pre), gt_pose).astype(np.float32)
+    rel_poses = np.matmul(np.linalg.inv(gt_pose), gt_pose_pre).astype(np.float32)
     r_err = np.linalg.norm((rel_poses[:3, :3] - pose_rel[:3, :3]), 'fro')
-    t_err = np.linalg.norm((rel_poses[:3, 3] - pose_rel[:, 3]))
-
+    t_err = np.linalg.norm((rel_poses[:3, 3] - pose_rel[:3, 3]))
+    
     print('gt rel pose:', rel_poses)
     print('estimate pose:', pose_rel)
     print('error:', r_err, t_err)
@@ -230,8 +230,8 @@ def direct_icp(frame_pre, frame, imu = None, imu_weight = None):
         cluster_matrix[i, i] = frame_pre[i].shape[1]
     W = np.kron(cluster_matrix, np.eye(virtual_point_num))
     
-    pose_rel = np.linalg.inv(A.T.dot(A)).dot(A.T).dot(b)
-    pose_rel = pose_rel[:12, :].reshape(3, -1)[:, :4]
+    pose_rel = np.linalg.inv(A.T.dot(W).dot(A)).dot(A.T).dot(W).dot(b)
+    pose_rel = np.concatenate((pose_rel[:9, :].reshape(3, -1).T, pose_rel[9:12, :].reshape(3, 1)), 1)
     
     return pose_rel
 
@@ -246,7 +246,7 @@ if __name__ == '__main__':
     intr = np.genfromtxt(INTRI_PATH)[:3, :3]
     screen_to_camera = np.linalg.inv(intr)
     
-    world_point = np.load(POINT_PATH)[:, 0:3].astype(np.float32)
+    """ world_point = np.load(POINT_PATH)[:, 0:3].astype(np.float32)
     pose = np.linalg.inv(np.genfromtxt(os.path.join(POSE_DIR, '0.txt')))
     r = pose[:3, :3]
     t = pose[:3, 3]
@@ -256,7 +256,7 @@ if __name__ == '__main__':
     rel_poses = np.matmul(np.linalg.inv(pose), pose_1).astype(np.float32)
     r = rel_poses[:3, :3]
     t = rel_poses[:3, 3]
-    world_point_2 = np.dot(world_point_1, r.T) + t
+    world_point_2 = np.dot(world_point_1, r.T) + t """
     
     
     """ points = generate_depth(screen_to_camera)
@@ -278,7 +278,11 @@ if __name__ == '__main__':
     points = scene11['points']
     pose = scene11['pose']
     bbox = scene11['bbox']
-    points = [world_point_1, world_point_2]
+    
+    """ mydict = {'points': points, 'bbox': bbox, 'pose': pose}
+    output = open('scene0011_00_100.pkl', 'wb')
+    pickle.dump(mydict, output)
+    output.close() """
     
     print('loaded!')
     
@@ -306,7 +310,7 @@ if __name__ == '__main__':
     r_err_list = []
     t_err_list = []
         
-    for i in range(0, len(points)):
+    for i in range(0, len(points), 1):
         points_class = get_index(points[i], bbox[i])
         keys = list(points_class.keys())
         print(keys)
@@ -359,8 +363,7 @@ if __name__ == '__main__':
             #vis_ctrl.set_lookat(look_at)
             #vis_ctrl.set_up([0, 0, 1])
             opt.show_coordinate_frame = True
-            vis.run()
             vis.poll_events()
             vis.update_renderer()
                     
-            time.sleep(20)
+            time.sleep(10)
