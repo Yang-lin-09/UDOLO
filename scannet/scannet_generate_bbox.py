@@ -11,6 +11,7 @@ INTRI_PATH = '/home/ylin/Code/UDOLO/scannet/scans/scene0011_00/intrinsic/intrins
 POSE_DIR = '/home/ylin/Code/UDOLO/scannet/scans/scene0011_00/pose'
 DEPTH_DIR = '/home/ylin/Code/UDOLO/scannet/scans/scene0011_00/depth'
 POINT_PATH = '/home/ylin/Code/UDOLO/scannet/scene0011_00_raw/scene0011_00_vert.npy'
+INSTANCE_DIR = '/home/ylin/Code/UDOLO/scannet/instance-filt/'
 
 '''
     Note:
@@ -39,6 +40,18 @@ def generate_depth(screen_to_camera):
         pos_z = np.nonzero(pc[:, 2] > 0)[0]
         point_cloud = pc[pos_z]
         full_point_cloud.append(point_cloud)
+    
+    return full_point_cloud
+
+def generate_instance(screen_to_camera):
+    
+    full_name_list = os.listdir(INSTANCE_DIR)
+    full_point_cloud = []
+    for i in range(len(full_name_list)):
+        
+        d = cv2.imread(os.path.join(INSTANCE_DIR, '{}.png'.format(i)), -1).astype(np.float32)
+        
+        full_point_cloud.append(d)
     
     return full_point_cloud
 
@@ -259,7 +272,8 @@ if __name__ == '__main__':
     world_point_2 = np.dot(world_point_1, r.T) + t """
     
     
-    """ points = generate_depth(screen_to_camera)
+    points = generate_depth(screen_to_camera)
+    instance = generate_instance(screen_to_camera)
     pose = generate_pose()
     bbox = get_camera_bbox(world_bbox_)
     # print(bbox[0].shape)
@@ -267,22 +281,24 @@ if __name__ == '__main__':
     print(len(points))
     print(len(bbox))
     print(len(pose))
+    print(len(instance))
     
-    mydict = {'points': points, 'bbox': bbox, 'pose': pose}
+    mydict = {'points': points, 'bbox': bbox, 'pose': pose, 'instance': instance}
     output = open('scene0011_00.pkl', 'wb')
     pickle.dump(mydict, output)
-    output.close() """
+    output.close()
 
-    
+    print('saved!')
     scene11 = pickle.load(open('scene0011_00.pkl', 'rb'))
-    points = scene11['points']
-    pose = scene11['pose']
-    bbox = scene11['bbox']
+    points = scene11['points'][:100]
+    pose = scene11['pose'][:100]
+    bbox = scene11['bbox'][:100]
+    instance = scene11['instance'][:100]
     
-    """ mydict = {'points': points, 'bbox': bbox, 'pose': pose}
+    mydict = {'points': points, 'bbox': bbox, 'pose': pose, 'instance': instance}
     output = open('scene0011_00_100.pkl', 'wb')
     pickle.dump(mydict, output)
-    output.close() """
+    output.close()
     
     print('loaded!')
     
